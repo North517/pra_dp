@@ -42,10 +42,6 @@
             <version>8.0.33</version>
         </dependency>
 
-
-
-
-
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
@@ -72,6 +68,13 @@
             <artifactId>hutool-all</artifactId>
             <version>5.8.10</version> <!-- 使用最新稳定版 -->
         </dependency>
+
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>fastjson</artifactId>
+            <version>1.2.83</version>
+        </dependency>
+
 
     </dependencies>
 
