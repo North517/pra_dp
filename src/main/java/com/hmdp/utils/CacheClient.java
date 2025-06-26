@@ -25,7 +25,6 @@ import static com.hmdp.utils.RedisConstants.*;
 @Component
 public class CacheClient {
 
-
     private final StringRedisTemplate stringRedisTemplate;
 
     public CacheClient(StringRedisTemplate stringRedisTemplate) {
@@ -35,6 +34,8 @@ public class CacheClient {
     public void set(String key, Object value,Long time, TimeUnit unit ) {
         stringRedisTemplate.opsForValue().set(key, JSONUtil.toJsonStr(value),time,unit);
     }
+
+
 
     public void setWithLogicalExpire(String key, Object value,Long time, TimeUnit unit ) {
         //设置逻辑过期
