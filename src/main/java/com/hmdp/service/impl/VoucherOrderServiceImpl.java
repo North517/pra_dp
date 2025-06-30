@@ -69,10 +69,26 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     *         真正执行数据库更新，返回是否成功（boolean）。
     */
 
+
+    /**乐观锁，直接使用stock顶替version
+     * 乐观锁优化：核心问题是避免多个线程对库存修改，出现超卖
+     *
+    * 原始写法（gt("stock", voucher.getStock())）
+    *       绝对安全：严格保证扣减的是查询时的库存，避免超卖
+    *       并发冲突高：只要有其他线程修改过库存，当前线程就会失败
+    *
+    *修改后写法（gt("stock", 0)）
+    *       并发成功率高：只要库存没卖完，就允许扣减
+    *
+    * 优先保证 “尽量卖完库存”，而非 “绝对不超卖”
+     * （因为库存通常是提前设置好的，超卖会触发库存报警，业务上可人工处理）
+    * 原始写法会导致大量请求因并发冲突失败，用户体验极差
+    */
+
         boolean success = seckillVoucherService
                 .update()
                 .setSql("stock = stock - 1")
-                .eq("voucher_id", voucherId)
+                .eq("voucher_id", voucherId).gt("stock", 0)
                 .update();
         if (!success) {
             //失败
@@ -91,7 +107,6 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
     save(voucherOrder);
 //6.放回订单id
-
         return Result.ok(orderId);
     }
 }

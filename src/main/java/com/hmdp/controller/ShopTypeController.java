@@ -27,8 +27,8 @@ import static com.hmdp.utils.RedisConstants.CACHE_SHOP_TYPE_LIST_KEY;
  * 前端控制器
  * </p>
  *
- * @author 虎
- * @since 2021-12-22
+ * @author north000_王大炮
+ * @since 2025-6-28
  */
 @RestController
 @RequestMapping("/shop-type")
