@@ -1,5 +1,6 @@
 package com.hmdp.utils;
 
+import cn.hutool.core.lang.UUID;
 import lombok.val;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
@@ -11,7 +12,10 @@ public class SimpleRedisLock implements ILock {
     private String name;
     //StringRedisTemplate用于与 Redis 交互
     private StringRedisTemplate stringRedisTemplate;
+    //锁的标识
     private static final String KEY_PREFIX = "lock:";
+    //线程标识
+    private static final String ID_PREFIX = UUID.randomUUID().toString(true) + "-";
 
     public SimpleRedisLock(StringRedisTemplate stringRedisTemplate, String name) {
         this.stringRedisTemplate = stringRedisTemplate;
@@ -27,10 +31,10 @@ public class SimpleRedisLock implements ILock {
          * 获取当前线程的唯一标识符（JVM 内唯一）。
          * 用途：作为锁的 value，用于后续释放锁时校验持有者身份（防止误释放其他线程的锁）。
          */
-        long threadId = Thread.currentThread().getId();
+        String threadId = ID_PREFIX + Thread.currentThread().getId();
         //获取锁
         Boolean success = stringRedisTemplate.opsForValue().
-                setIfAbsent(KEY_PREFIX + name, threadId  + "", timeoutSec, TimeUnit.SECONDS);
+                setIfAbsent(KEY_PREFIX + name, threadId , timeoutSec, TimeUnit.SECONDS);
         /**
          * 这样写本质上是为了防御 **null值风险 **
          *此处直接返回包装类或者基本类型都不行
@@ -46,7 +50,15 @@ public class SimpleRedisLock implements ILock {
 
     @Override
     public void unlock() {
-        //释放锁
-    stringRedisTemplate.delete(KEY_PREFIX + name);
+        //获取线程标识
+        String threadId = ID_PREFIX + Thread.currentThread().getId();
+        //获取锁中的标识
+        String id = stringRedisTemplate.opsForValue().get(KEY_PREFIX + name);
+        //判断标识是否一致
+        if (threadId.equals(id)) {
+            //一致释放锁
+            stringRedisTemplate.delete(KEY_PREFIX + name);
+        }
+
     }
 }
