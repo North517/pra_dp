@@ -1,9 +1,15 @@
 package com.hmdp.utils;
 
+import cn.hutool.core.io.resource.ClassPathResource;
 import cn.hutool.core.lang.UUID;
 import lombok.val;
+import org.apache.ibatis.javassist.ClassPath;
+import org.springframework.core.io.Resource;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.data.redis.core.script.RedisScript;
 
+import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -16,6 +22,13 @@ public class SimpleRedisLock implements ILock {
     private static final String KEY_PREFIX = "lock:";
     //线程标识
     private static final String ID_PREFIX = UUID.randomUUID().toString(true) + "-";
+    //锁的脚本
+    private static final DefaultRedisScript<Long> UNLOCK_SCRIPT;
+    static {
+        UNLOCK_SCRIPT = new DefaultRedisScript<>();
+        UNLOCK_SCRIPT.setLocation((Resource) new ClassPathResource("unlock.lua"));
+        UNLOCK_SCRIPT.setResultType(Long.class);
+    }
 
     public SimpleRedisLock(StringRedisTemplate stringRedisTemplate, String name) {
         this.stringRedisTemplate = stringRedisTemplate;
@@ -48,17 +61,45 @@ public class SimpleRedisLock implements ILock {
         return Boolean.TRUE.equals(success);
     }
 
+
+
+    /**
+     *
+     * 判断结束与释放锁之间是非原子操作，在多线程或分布式环境中，可能出现以下情况：
+     * 线程 A 判断后，即将释放锁时，可能发生：
+     *      产生阻塞（可能因为JVM垃圾回收）redis锁达到的过期时间阻塞仍未结束
+     *      或者此时锁的过期时间到达，Redis 自动删除锁。
+     *
+     * 线程 B 重新获取锁并修改 id。
+     * 线程 A 执行 delete，误删线程 B 的锁。
+     */
+
     @Override
     public void unlock() {
-        //获取线程标识
-        String threadId = ID_PREFIX + Thread.currentThread().getId();
-        //获取锁中的标识
-        String id = stringRedisTemplate.opsForValue().get(KEY_PREFIX + name);
-        //判断标识是否一致
-        if (threadId.equals(id)) {
-            //一致释放锁
-            stringRedisTemplate.delete(KEY_PREFIX + name);
-        }
+        //调用Lua脚本
+        stringRedisTemplate.execute(
+                UNLOCK_SCRIPT,
+                Collections.singletonList(KEY_PREFIX + name),
+                ID_PREFIX + Thread.currentThread().getId()
+                );
 
     }
+
+
+
+//    @Override
+//    public void unlock() {
+//        //获取线程标识
+//        String threadId = ID_PREFIX + Thread.currentThread().getId();
+//        //获取锁中的标识
+//        String id = stringRedisTemplate.opsForValue().get(KEY_PREFIX + name);
+//        //判断标识是否一致
+//        if (threadId.equals(id)) {
+//            //一致释放锁
+//            stringRedisTemplate.delete(KEY_PREFIX + name);
+//        }
+//
+//    }
 }
+
+
