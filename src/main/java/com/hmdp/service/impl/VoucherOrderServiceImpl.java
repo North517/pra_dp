@@ -12,6 +12,8 @@ import com.hmdp.utils.RedisIdWorker;
 import com.hmdp.utils.SimpleRedisLock;
 import com.hmdp.utils.UserHolder;
 import lombok.val;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.aop.framework.AopContext;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -26,7 +28,7 @@ import java.time.LocalDateTime;
  * </p>
  *
  * @author north000_王大炮
- * @since 2025-6-28
+ * @since 2025-7-7
  */
 @Service
 public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, VoucherOrder> implements IVoucherOrderService {
@@ -40,9 +42,11 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     @Resource
     private StringRedisTemplate stringRedisTemplate;
 
+    @Resource
+    private RedissonClient redissonClient;
+
 
     @Override
-
     public Result seckillVoucher(Long voucherId) {
 
 //1.查询优惠劵
@@ -93,12 +97,11 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
 
         Long userId = UserHolder.getUser().getId();
-        //synchronized (userId.toString().intern()) {
-        //不使用 synchronized ，自己创建锁对象
-            //1.创建锁对象
-        SimpleRedisLock lock = new SimpleRedisLock(stringRedisTemplate,"order:" + userId);
-            //2.获取锁
-        boolean isLock = lock.trylock(1200L);
+        //1.创建锁对象
+        //SimpleRedisLock lock = new SimpleRedisLock(stringRedisTemplate,"order:" + userId);
+        RLock lock = redissonClient.getLock("order:" + userId);
+        //2.获取锁
+        boolean isLock = lock.tryLock();
 
         if (!isLock) {
             //获取锁失败，返回失败
@@ -191,8 +194,4 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             //7.放回订单id
             return Result.ok(orderId);
         }
-
-
-
-
 }
