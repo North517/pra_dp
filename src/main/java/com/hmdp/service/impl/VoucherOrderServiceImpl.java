@@ -1,5 +1,6 @@
 package com.hmdp.service.impl;
-
+import org.springframework.core.io.ClassPathResource;
+//import cn.hutool.core.io.resource.ClassPathResource;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.SeckillVoucher;
@@ -16,11 +17,13 @@ import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.aop.framework.AopContext;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
 import java.time.LocalDateTime;
+import java.util.Collections;
 
 /**
  * <p>
@@ -28,7 +31,7 @@ import java.time.LocalDateTime;
  * </p>
  *
  * @author north000_王大炮
- * @since 2025-7-7
+ * @since 2025-7-8
  */
 @Service
 public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, VoucherOrder> implements IVoucherOrderService {
@@ -45,77 +48,133 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     @Resource
     private RedissonClient redissonClient;
 
+    private static final DefaultRedisScript<Long> SECKILL_SCRIPT;
+    static {
+        SECKILL_SCRIPT = new DefaultRedisScript<>();
+        SECKILL_SCRIPT.setLocation(new ClassPathResource("seckill.lua"));
+        SECKILL_SCRIPT.setResultType(Long.class);
+    }
 
     @Override
     public Result seckillVoucher(Long voucherId) {
-
-//1.查询优惠劵
-        SeckillVoucher voucher = seckillVoucherService.getById(voucherId);
-//2.判断是否可以秒杀
-        LocalDateTime now = LocalDateTime.now();
-        // 2.1.秒杀未开始
-        if (now.isBefore(voucher.getBeginTime())) {
-            return Result.fail("秒杀尚未开始");
-        }
-
-        // 2.2.秒杀已结束
-        if (now.isAfter(voucher.getEndTime())) {
-            return Result.fail("秒杀已经结束");
-        }
-//3.判断库存是否充足
-        if (voucher.getStock() < 1) {
-            return Result.fail("库存不足");
-        }
-        /**
-         * 使用 synchronized 关键字进行同步控制，
-         * intern() 方法会返回字符串在字符串常量池中的唯一实例（会共享常量池中的同一实例），
-         * 这样可以保证同一个用户 ID 对应的锁是唯一的，不同用户之间不会互相阻塞，
-         * 从而控制同一用户的并发请求，避免同一用户同时发起多个秒杀请求导致数据混乱。
-         * 比如，防止同一用户在极短时间内多次点击秒杀按钮，同时进入后续的订单创建逻辑，造成一人多单的情况。
-         */
-
-
-        /**
-         * 使用代理对象AopContext.currentProxy()
-         * Spring AOP 的工作机制:
-         * Spring AOP 通过代理模式实现方法拦截。当你调用一个被 @Transactional、@Cacheable 等注解标记的方法时，
-         * 实际上是通过 代理对象 调用的，而非原始对象。
-         *
-         *
-         * AOP 代理是 Spring 实现切面编程的核心机制，
-         * 通过动态代理技术在不修改原始代码的前提下为对象添加额外功能。
-         */
-
-        /**
-         * 若不使用代理，如果直接调用 this.createVoucherOrder(voucherId) ，会绕过 Spring AOP 代理，
-         * 导致事务无法正常起作用
-         *
-         * 若不使用代理，扣减库存和创建订单的操作可能 不在同一个事务中，
-         * 导致数据不一致（例如库存扣减成功但订单创建失败）。
-         * 使用代理后，Spring 会确保这两个操作在同一个事务中，要么全部成功，要么全部回滚。
-         */
-
-
+        //获取用户
         Long userId = UserHolder.getUser().getId();
-        //1.创建锁对象
-        //SimpleRedisLock lock = new SimpleRedisLock(stringRedisTemplate,"order:" + userId);
-        RLock lock = redissonClient.getLock("order:" + userId);
-        //2.获取锁
-        boolean isLock = lock.tryLock();
+        //1.执行lua脚本
+        Long result = stringRedisTemplate.execute(
+                SECKILL_SCRIPT,
+                Collections.emptyList(),
+                voucherId.toString(),
+                userId.toString()
+        );
+        //2.判断结果时为0
+        int r = result.intValue();
+        if(r != 0){
+            //2.1.不为0，代表没有购买资格
+            return Result.fail(r == 1 ? "库存不足" : "不能重复下单");
+        }
 
-        if (!isLock) {
-            //获取锁失败，返回失败
-            return Result.fail("每位用户只限下一单,不允许重复下单");
-        }
-        try {
-            //获取代理对象（事务）
-            IVoucherOrderService proxy = (IVoucherOrderService)AopContext.currentProxy();
-            return proxy.createVoucherOrder(voucherId);
-        }finally {
-            //释放锁
-            lock.unlock();
-        }
-}
+        //2.1.不为0，代表没有购买资格
+        Long orderId = redisIdWorker.nextId("order");
+        //TODO
+
+        //2.2.为0有购买资格，把下单信息保存到阻塞队列
+        //3.返回订单id
+        return Result.ok(orderId);
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//    @Override
+//    public Result seckillVoucher(Long voucherId) {
+////1.查询优惠劵
+//        SeckillVoucher voucher = seckillVoucherService.getById(voucherId);
+////2.判断是否可以秒杀
+//        LocalDateTime now = LocalDateTime.now();
+//        // 2.1.秒杀未开始
+//        if (now.isBefore(voucher.getBeginTime())) {
+//            return Result.fail("秒杀尚未开始");
+//        }
+//
+//        // 2.2.秒杀已结束
+//        if (now.isAfter(voucher.getEndTime())) {
+//            return Result.fail("秒杀已经结束");
+//        }
+////3.判断库存是否充足
+//        if (voucher.getStock() < 1) {
+//            return Result.fail("库存不足");
+//        }
+//        /**
+//         * 使用 synchronized 关键字进行同步控制，
+//         * intern() 方法会返回字符串在字符串常量池中的唯一实例（会共享常量池中的同一实例），
+//         * 这样可以保证同一个用户 ID 对应的锁是唯一的，不同用户之间不会互相阻塞，
+//         * 从而控制同一用户的并发请求，避免同一用户同时发起多个秒杀请求导致数据混乱。
+//         * 比如，防止同一用户在极短时间内多次点击秒杀按钮，同时进入后续的订单创建逻辑，造成一人多单的情况。
+//         */
+//
+//
+//        /**
+//         * 使用代理对象AopContext.currentProxy()
+//         * Spring AOP 的工作机制:
+//         * Spring AOP 通过代理模式实现方法拦截。当你调用一个被 @Transactional、@Cacheable 等注解标记的方法时，
+//         * 实际上是通过 代理对象 调用的，而非原始对象。
+//         *
+//         *
+//         * AOP 代理是 Spring 实现切面编程的核心机制，
+//         * 通过动态代理技术在不修改原始代码的前提下为对象添加额外功能。
+//         */
+//
+//        /**
+//         * 若不使用代理，如果直接调用 this.createVoucherOrder(voucherId) ，会绕过 Spring AOP 代理，
+//         * 导致事务无法正常起作用
+//         *
+//         * 若不使用代理，扣减库存和创建订单的操作可能 不在同一个事务中，
+//         * 导致数据不一致（例如库存扣减成功但订单创建失败）。
+//         * 使用代理后，Spring 会确保这两个操作在同一个事务中，要么全部成功，要么全部回滚。
+//         */
+//
+//
+//        Long userId = UserHolder.getUser().getId();
+//        //1.创建锁对象
+//        //SimpleRedisLock lock = new SimpleRedisLock(stringRedisTemplate,"order:" + userId);
+//        RLock lock = redissonClient.getLock("order:" + userId);
+//        //2.获取锁
+//        boolean isLock = lock.tryLock();
+//
+//        if (!isLock) {
+//            //获取锁失败，返回失败
+//            return Result.fail("每位用户只限下一单,不允许重复下单");
+//        }
+//        try {
+//            //获取代理对象（事务）
+//            IVoucherOrderService proxy = (IVoucherOrderService)AopContext.currentProxy();
+//            return proxy.createVoucherOrder(voucherId);
+//        }finally {
+//            //释放锁
+//            lock.unlock();
+//        }
+//}
 
 
     /**

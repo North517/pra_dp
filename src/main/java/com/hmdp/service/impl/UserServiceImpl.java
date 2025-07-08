@@ -13,6 +13,7 @@ import com.hmdp.service.IUserService;
 import com.hmdp.utils.RegexUtils;
 import lombok.extern.slf4j.Slf4j;
 import lombok.val;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -32,8 +33,8 @@ import static com.hmdp.utils.SystemConstants.USER_NICK_NAME_PREFIX;
  * 服务实现类
  * </p>
  *
- * @author 虎哥
- * @since 2021-12-22
+ * @author north000_王大炮
+ * @since 2025-7-8
  */
 @Slf4j
 @Service
@@ -55,7 +56,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 //        session.setAttribute("code",code);
         //4.保存到redis
         stringRedisTemplate.opsForValue().set(LOGIN_CODE_KEY + phone,code,LOGIN_CODE_TTL, TimeUnit.MINUTES);
-
         //5.发送验证码
         log.debug("成功发送验证码，验证码：{}",code);
         //6.返回
