@@ -42,7 +42,7 @@ public class UserLoginBatch {
         users.forEach(
                 user -> {
 
-                    //          7.1,随机生成token,作为登录令牌
+                    //7.1,随机生成token,作为登录令牌
                     String token = UUID.randomUUID().toString(true);
 //        7.2,将User对象转化为HashMap存储
                     UserDTO userDTO = BeanUtil.copyProperties(user, UserDTO.class);
