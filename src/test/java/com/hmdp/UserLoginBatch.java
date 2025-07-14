@@ -19,6 +19,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.apache.http.impl.client.CloseableHttpClient;
+import org.springframework.test.annotation.DirtiesContext;
 
 import javax.annotation.Resource;
 import java.io.*;
@@ -44,12 +45,11 @@ public class UserLoginBatch {
 
                     //7.1,随机生成token,作为登录令牌
                     String token = UUID.randomUUID().toString(true);
-//        7.2,将User对象转化为HashMap存储
+                    //7.2,将User对象转化为HashMap存储
                     UserDTO userDTO = BeanUtil.copyProperties(user, UserDTO.class);
                     File file = new File("E:\\IDEA\\hm-dianping\\tokens.txt");
                     FileOutputStream output = null;
                     try {
-
                         output = new FileOutputStream(file, true);
                         byte[] bytes = token.getBytes();
                         output.write(bytes);
