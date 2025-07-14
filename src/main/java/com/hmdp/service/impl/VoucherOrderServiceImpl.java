@@ -67,18 +67,20 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     }
 
     private class VoucherOrderHandler implements Runnable {
-        //使用消息队列的方法换掉阻塞队列的方法
+        //它是一个实现了 Runnable 接口的线程类，用于从 Redis Stream 中读取消息并处理订单，替代了原来的阻塞队列。
         private BlockingQueue<VoucherOrder> orderTasks = new ArrayBlockingQueue<>(1024 * 1024);
         String queueName = "stream.orders";
+
+        //run 方法是线程执行的主逻辑，while(true) 表示无限循环，确保线程持续监听消息队列，永不退出。
         @Override
         public void run() {
             while (true) {
                 try {
                     //1.获取消息队列中的订单信息
                     List<MapRecord<String,Object,Object>> list = stringRedisTemplate.opsForStream().read(
-                            Consumer.from("g1", "c1"),
-                            StreamReadOptions.empty().count(1).block(Duration.ofSeconds(2)),
-                            StreamOffset.create(queueName, ReadOffset.lastConsumed())
+                            Consumer.from("g1", "c1"), // 定义消费者组g1，消费者c1
+                            StreamReadOptions.empty().count(1).block(Duration.ofSeconds(2)),// 每次读取1条，阻塞2秒
+                            StreamOffset.create(queueName, ReadOffset.lastConsumed())// 从最后消费位置读取
                     );
                     //2.判断消息是否成功
                     if (list == null || list.isEmpty()) {
@@ -87,8 +89,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                     }
                     //3.解析消息中的订单信息
                     MapRecord<String , Object , Object> record = list.get(0);
-                    Map<Object,Object> value = record.getValue();
-                    VoucherOrder voucherOrder = BeanUtil.fillBeanWithMap(value, new VoucherOrder(),true);
+                    Map<Object,Object> value = record.getValue();//消息的具体内容（如 userId=123、voucherId=456 等），对应 Lua 脚本中 XADD 写入的键值对。
+                    VoucherOrder voucherOrder = BeanUtil.fillBeanWithMap(value, new VoucherOrder(),true);//使用 Hutool 工具类将键值对映射为 VoucherOrder 对象
                     //4.如果获取成功，可以下单
                     handleVoucherOrder(voucherOrder);
                     //5.ACK确认
@@ -120,8 +122,10 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                     Map<Object, Object> value = record.getValue();
                     VoucherOrder voucherOrder = BeanUtil.fillBeanWithMap(value, new VoucherOrder(), true);
                     //4.处理订单
-                    handleVoucherOrder(voucherOrder);
-                    //5.ACK确认
+                    handleVoucherOrder(voucherOrder);//
+                    //5.ACK确认，存放已读取但未确认（.acknowledge）的消息，用于处理消费者故障恢复后重新消费未完成的消息。
+                        //Redis 会将该消息从消费者组的「Pending List」（未确认消息列表）中移除，避免后续重复处理。
+                        //若不确认，消息会留在 Pending List 中，消费者重启后会重新处理，可能导致订单重复创建。
                     stringRedisTemplate.opsForStream().acknowledge(queueName, "g1", record.getId());
                 } catch (Exception e) {
                     log.error("处理PendingList订单异常", e);
@@ -136,30 +140,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         }
     }
 
-
-//    private class VoucherOrderHandler implements Runnable {
-//        //不需要把下单信息保存到阻塞队列了
-//        private BlockingQueue<VoucherOrder> orderTasks = new ArrayBlockingQueue<>(1024 * 1024);
-//        @Override
-//        public void run() {
-//            while (true) {
-//
-//                try {
-//                    //1.获取队列中的订单信息
-//                    VoucherOrder voucherOrder = orderTasks.take();
-//                    //2.创建订单
-//                    handleVoucherOrder(voucherOrder);
-//
-//                } catch (Exception e) {
-//                    log.error("处理订单异常",e);
-//                }
-//
-//
-//            }
-//        }
-//    }
-
-
+    //无限循环处理 Pending List 中的消息（已读取但未 ACK 的消息），直到所有未确认消息处理完毕。
     private void handleVoucherOrder(VoucherOrder voucherOrder) {
         //获取用户
         Long userId = voucherOrder.getUserId();

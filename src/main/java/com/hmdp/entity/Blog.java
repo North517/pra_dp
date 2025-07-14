@@ -16,8 +16,8 @@ import java.time.LocalDateTime;
  * 
  * </p>
  *
- * @author 虎哥
- * @since 2021-12-22
+ * @author north000_王大炮
+ * @since 2025-7-15
  */
 @Data
 @EqualsAndHashCode(callSuper = false)
@@ -43,13 +43,18 @@ public class Blog implements Serializable {
     /**
      * 用户图标
      */
-    @TableField(exist = false)
+    @TableField(exist = false)//这些属性（@TableField）不会参与与数据库表的映射操作。
     private String icon;
     /**
      * 用户姓名
      */
     @TableField(exist = false)
     private String name;
+    /**
+     * 是否已经点赞
+     */
+    @TableField(exist = false)
+    private Boolean isLiked;
     /**
      * 是否点赞过了
      */
