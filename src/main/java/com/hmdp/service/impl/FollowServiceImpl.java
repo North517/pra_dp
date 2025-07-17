@@ -48,7 +48,7 @@ public class FollowServiceImpl extends ServiceImpl<FollowMapper, Follow> impleme
             //3.关注，新增数据
             Follow follow = new Follow();
             follow.setUserId(userId);
-            follow.setFollowUserId(userId);
+            follow.setFollowUserId(followUserId);
             boolean issuccess = save(follow);
             if (issuccess) {
                 //把关注用户的id，放入redis的set集合
@@ -87,7 +87,7 @@ public class FollowServiceImpl extends ServiceImpl<FollowMapper, Follow> impleme
         String key = "follows:" + userId;
         String key2 = "follows:" + id;
         Set<String> intersect = stringRedisTemplate.opsForSet().intersect(key, key2);
-        if(intersect != null && intersect.isEmpty()) {
+        if(intersect != null || intersect.isEmpty()) {
             return Result.ok(Collections.emptyList());
         }
         //3.解析id集合
