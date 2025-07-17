@@ -5,6 +5,7 @@ import com.hmdp.service.impl.ShopServiceImpl;
 import com.hmdp.utils.CacheClient;
 import com.hmdp.utils.RedisIdWorker;
 import io.lettuce.core.api.async.RedisGeoAsyncCommands;
+import lombok.Value;
 import lombok.val;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -106,7 +107,22 @@ class HmDianPingApplicationTests {
 
 
 
+    @Test
+    void testHyperLoglog() throws InterruptedException {
+        String[] value = new String[1000];
+        int j = 0;
 
+        for (int i = 0; i < 1000000; i++) {
+            j = i % 1000;
+            value[j] = "user_" + i;
+            if (j==999){
+                stringRedisTemplate.opsForHyperLogLog().add("hl2", value);
+            }
+        }
+        //统计数量
+        Long count = stringRedisTemplate.opsForHyperLogLog().size("hl2");
+        System.out.println("count = " + count);
+    }
 
 
 
